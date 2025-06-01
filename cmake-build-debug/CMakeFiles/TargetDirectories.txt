@@ -1,0 +1,3 @@
+/Users/rachelx000/Desktop/FinalProject/cmake-build-debug/CMakeFiles/learnply.dir
+/Users/rachelx000/Desktop/FinalProject/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/rachelx000/Desktop/FinalProject/cmake-build-debug/CMakeFiles/rebuild_cache.dir
