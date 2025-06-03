@@ -28,7 +28,7 @@ Eugene Zhang, 2005
 const int win_width=1024;
 const int win_height=1024;
  
-int display_mode = 0;
+int display_mode = 1;
 int view_mode = 0;  // 0 = othogonal, 1=perspective
 double radius_factor = 0.9; // zoom factor orthogonal view
 float s_old, t_old;
@@ -58,6 +58,9 @@ int hatch_tracing_mode = 0; // 0=current triangle curvature, 1=project from prev
 
 /* Project 2, Debugging */
 int wireframe_mode = 0; // 0=no wireframe, 1=wireframe
+
+/* Final Project */
+int silhouette_smoothing_mode = 0; // 0 = no silhouette smoothing, 1 = silhouette smoothing enabled
 
 int ACSIZE = 1; // Passes for anti-aliasing
 struct jitter_struct{
@@ -92,19 +95,21 @@ int main(int argc, char *argv[])
 
   	progname = argv[0];
 
-	this_file = fopen("../tempmodels/torus.ply", "r");
+	this_file = fopen("../tempmodels/coarse_feline.ply", "r");
 	poly = new Polyhedron (this_file);
 	fclose(this_file);
 	mat_ident( rotmat );	
 
 	poly->initialize(); // initialize everything
 
-	/* Project 1, problem 2 */
-	poly->create_corners();
+	
 
 	poly->calc_bounding_sphere();
 	poly->calc_face_normals_and_area();
 	poly->average_normals();
+
+	/* Project 1, problem 2 */
+	//poly->create_corners();
 
 	/* Project 1, problem 3a-d */
 	poly->compute_euler_characteristic();
@@ -483,6 +488,13 @@ void keyboard(unsigned char key, int x, int y) {
 		display();
 		break;
 
+	/* Final Project */
+	case 'm':
+		silhouette_smoothing_mode = (silhouette_smoothing_mode + 1) % 2;
+		printf("silhouette_smoothing_mode=%d\n", silhouette_smoothing_mode);
+		display();
+		break;
+
 	default:
 		fprintf(stderr, "Unknown key pressed\n");
 		break;
@@ -718,7 +730,6 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 	}
 
 	// draw the silhouette if enabled
-	// draw the silhouette if enabled
 	if (silhouette_mode != 0)
 	{
 		// get current model-view matrix
@@ -731,8 +742,38 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 
 		if (silhouette_mode == 1) {
 			poly->compute_silhouette_edges(view, translation);
-			poly->remesh_silhouette(view, translation);
+			// poly->remesh_silhouette(view, translation);
 		} else if (silhouette_mode == 2){
+			poly->compute_silhouette_faces(view, translation);
+		}
+
+		// draw the silhouette line segments
+		glDisable(GL_LIGHTING);
+		glLineWidth(8.0);
+		glColor3f(0.0, 0.0, 0.0);
+		glBegin(GL_LINES);
+		for (const LineSegment& segment : poly->silhouette) {
+			glVertex3dv(segment.start.entry);
+			glVertex3dv(segment.end.entry);
+		}
+		glEnd();
+	}
+
+	if (silhouette_mode != 0)
+	{
+		// get current model-view matrix
+		GLdouble m[16];
+		glGetDoublev(GL_MODELVIEW_MATRIX, m);
+		icMatrix3x3 view(m[0], m[4], m[8],
+			m[1], m[5], m[9],
+			m[2], m[6], m[10]);
+		icVector3 translation(m[12], m[13], m[14]);
+
+		if (silhouette_mode == 1) {
+			poly->compute_silhouette_edges(view, translation);
+			// poly->remesh_silhouette(view, translation);
+		}
+		else if (silhouette_mode == 2) {
 			poly->compute_silhouette_faces(view, translation);
 		}
 
@@ -807,6 +848,106 @@ void display_pen_ink(Polyhedron* this_poly)
 
 }
 
+/* Final Project */
+void display_silhouette_rendering(Polyhedron* this_poly)
+{
+	// get current model-view matrix
+	GLdouble m[16];
+	GLfloat mat_diffuse[4];
+	mat_diffuse[0] = 0.0;
+	mat_diffuse[1] = 0.0;
+	mat_diffuse[2] = 1.0;
+	mat_diffuse[3] = 1.0;
+
+	glGetDoublev(GL_MODELVIEW_MATRIX, m);
+	icMatrix3x3 view(m[0], m[4], m[8],
+		m[1], m[5], m[9],
+		m[2], m[6], m[10]);
+	icVector3 translation(m[12], m[13], m[14]);
+	this_poly->remesh_silhouette(view, translation);
+
+	glEnable(GL_POLYGON_OFFSET_FILL);
+	glPolygonOffset(1., 1.);
+
+	glEnable(GL_DEPTH_TEST);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glShadeModel(GL_SMOOTH);
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT0);
+	glEnable(GL_LIGHT1);
+	glEnable(GL_LINE_SMOOTH);
+
+	if (display_mode == 1) {
+		Triangle* temp_tri;
+		for (int i = 0; i < this_poly->remesh_data.new_triangles.size(); i++) 
+		{
+			glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+			glBegin(GL_TRIANGLES);
+
+			temp_tri = this_poly->remesh_data.new_triangles[i];
+			for (int j = 0; j < 3; j++) {
+				Vertex* v = temp_tri->verts[j];
+				glNormal3dv(v->normal.entry);
+				glVertex3d(v->x, v->y, v->z);
+			}
+			glEnd();
+		}
+	}
+	else if (display_mode == 2) {
+		Edge* temp_edge;
+
+		glDisable(GL_LIGHTING);
+		glLineWidth(1.0);
+		glBegin(GL_LINES);
+		for (int i = 0; i < this_poly->remesh_data.new_edges.size(); i++)
+		{
+			temp_edge = this_poly->remesh_data.new_edges[i];
+			if (temp_edge->is_new)
+				glColor3f(1.0, 0.0, 0.0);
+			else
+				glColor3f(0.0, 0.0, 0.0);
+			glVertex3d(temp_edge->verts[0]->x, temp_edge->verts[0]->y, temp_edge->verts[0]->z);
+			glVertex3d(temp_edge->verts[1]->x, temp_edge->verts[1]->y, temp_edge->verts[1]->z);
+		}
+		glEnd();
+	}
+	else if (display_mode == 3) {
+		Triangle* temp_tri;
+		for (int i = 0; i < this_poly->remesh_data.new_triangles.size(); i++)
+		{
+			glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+			glBegin(GL_TRIANGLES);
+
+			temp_tri = this_poly->remesh_data.new_triangles[i];
+			for (int j = 0; j < 3; j++) {
+				Vertex* v = temp_tri->verts[j];
+				glNormal3dv(v->normal.entry);
+				glVertex3d(v->x, v->y, v->z);
+			}
+			glEnd();
+		}
+
+		Edge* temp_edge;
+
+		glDisable(GL_LIGHTING);
+		glLineWidth(1.0);
+		glBegin(GL_LINES);
+		for (int i = 0; i < this_poly->remesh_data.new_edges.size(); i++)
+		{
+			temp_edge = this_poly->remesh_data.new_edges[i];
+			if (temp_edge->is_new)
+				glColor3f(1.0, 0.0, 0.0);
+			else
+				glColor3f(0.0, 0.0, 0.0);
+			glVertex3d(temp_edge->verts[0]->x, temp_edge->verts[0]->y, temp_edge->verts[0]->z);
+			glVertex3d(temp_edge->verts[1]->x, temp_edge->verts[1]->y, temp_edge->verts[1]->z);
+		}
+		glEnd();
+	}
+
+
+}
+
 void display(void)
 {
 	GLint viewport[4];
@@ -836,14 +977,16 @@ void display(void)
 			break;
 		}
 		set_scene(GL_RENDER, poly);
-		if (render_mode == 0)
+
+		/* Final Project */
+		if (silhouette_smoothing_mode == 0)
 			display_shape(GL_RENDER, poly);
-		else if (render_mode == 1)
-			display_pen_ink(poly);
+		else
+			display_silhouette_rendering(poly);
 		glPopMatrix ();
 		glAccum(GL_ACCUM, 1.0/ACSIZE);
 	}
-	glAccum (GL_RETURN, 1.0);
+	glAccum(GL_RETURN, 1.0);
 	glFlush();
 	glutSwapBuffers();
 	glFinish();

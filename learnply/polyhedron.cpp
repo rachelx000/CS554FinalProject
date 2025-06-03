@@ -14,6 +14,7 @@ Eugene Zhang, 2005
 #include <stdlib.h>
 #include <math.h>
 #include <algorithm>
+#include <map>
 
 static PlyFile *in_ply;
 
@@ -1073,10 +1074,11 @@ void Polyhedron::compute_silhouette_faces(const icMatrix3x3& view, const icVecto
 
 }
 
-/* Final Project */
+;//////////////////////////////////////////////////////////////////////////////
+;// Final Project functions
+;//////////////////////////////////////////////////////////////////////////////
 
-// Helper function for remesh_silhouette to find the index of the odd vertex given the
-// visibility list of a silhouette triangle
+
 int Polyhedron::find_odd_visibility(const bool visibility[3]) {
 	if (visibility[1] == visibility[2] && visibility[0] != visibility[1]) {
 		return 0;
@@ -1136,21 +1138,20 @@ icVector3 Polyhedron::hermite_interpolation(const icVector3& v1, const icVector3
 	return A - B + C + D;
 }
 
-void Polyhedron::compute_silhouette_point(Edge* edge, const icMatrix3x3& view, const icVector3& translate) {
+void Polyhedron::compute_silhouette_point(Edge* edge, const icVector3& camera_pos) {
 	//		N1(u)=(1−u)⋅N1+u⋅N2
 	//		D(u)=(1−u)⋅D1+u⋅D2
 	// Solve the quadratic equation given by D(u)*N1(u)=0 to locate the silhouette point:
 	//		[(1−u)⋅D1+u⋅D2] * [(1−u)⋅N1+u⋅N2] = 0
 	//		(1-u)^2*D1*N1 + (1-u)*u*(D2*N1 + D1*N2) + u^2*D2*N2 = 0
-
 	icVector3 v1(edge->verts[0]->x, edge->verts[0]->y, edge->verts[0]->z);
 	icVector3 v2(edge->verts[1]->x, edge->verts[1]->y, edge->verts[1]->z);
 
-	icVector3 N1 = view * edge->verts[0]->normal;
-	icVector3 N2 = view * edge->verts[1]->normal;
+	icVector3 N1 = edge->verts[0]->normal;
+	icVector3 N2 = edge->verts[1]->normal;
 
-	icVector3 D1 = view * v1 + translate;
-	icVector3 D2 = view * v2 + translate;
+	icVector3 D1 = camera_pos - v1;
+	icVector3 D2 = camera_pos - v2;
 
 	double cA = dot(D1, N1);
 	double cB = dot(D2, N1);
@@ -1163,6 +1164,11 @@ void Polyhedron::compute_silhouette_point(Edge* edge, const icMatrix3x3& view, c
 	double c = cA;
 
 	double disc = sqrt( b*b - 4.f*a*c );
+	if (disc < 0) {
+		printf("Error: discriminant < 0\n");
+		return;
+	}
+
 	double u = (-b + disc) / (2.0 * a);
 	// check if interpolant u is valid (within the range [0, 1])
 	// If not, use the other solution
@@ -1181,9 +1187,8 @@ void Polyhedron::compute_silhouette_point(Edge* edge, const icMatrix3x3& view, c
 	edge->silhouette_point = hermite_interpolation(v1, v2, edge->tangent_v1, edge->tangent_v2, u);
 }
 
-std::pair<Edge*, Edge*> Polyhedron::compute_silhouette_bridges(Triangle* tri, const bool visibility[3], int odd_index)
+std::pair<Edge*, Edge*> Polyhedron::compute_silhouette_bridges(Triangle* tri, const bool visibility[3], Vertex* odd_vertex)
 {
-	Vertex* odd_vertex = tri->verts[odd_index];
 	std::pair<Edge*, Edge*> silhouette_bridges;
 
 	// Find the two edges with visibility (+, -)
@@ -1196,14 +1201,13 @@ std::pair<Edge*, Edge*> Polyhedron::compute_silhouette_bridges(Triangle* tri, co
 			if (j == 0) {
 				silhouette_bridges.first = curr_edge;
 				compute_tangents_for_an_edge(curr_edge);
-
 			}
 			if (j == 1) {
 				silhouette_bridges.second = curr_edge;
 				compute_tangents_for_an_edge(curr_edge);
 			}
+			j++;
 		}
-		j++;
 	}
 	return silhouette_bridges;
 }
@@ -1246,8 +1250,63 @@ icVector3 Polyhedron::compute_silhouette_segment(Edge* e1, Edge* e2, float u) {
 
 }
 
+int Polyhedron::compute_segment_num(Edge* e1, Edge* e2) {
+	// Compute the midpoint of the chord formed by two silhouette points
+	icVector3 v1 = e1->silhouette_point;
+	icVector3 v2 = e2->silhouette_point;
+	icVector3 mid = (v1 + v2) * 0.5f;
+
+	// Compute the midpoint of the expected hermite curve
+	icVector3 hermite_mid = compute_silhouette_segment(e1, e2, 0.5f);
+
+	// Estimate arc height h and arc curvature r
+	double h = length(hermite_mid - mid);
+	icVector3 n1 = e1->silhouette_point_normal;
+	icVector3 n2 = e2->silhouette_point_normal;
+	double cos_theta = dot(n1, n2);
+	double r = sqrt((1.0 - cos_theta) / 2.f);
+
+	int ns = std::ceil(0.5 * sqrt(h * r));
+	ns = std::max(2, ns);
+
+	return ns;
+}
+
+Vertex* Polyhedron::create_new_vertex(icVector3& pos, icVector3& normal) {
+	Vertex* v = new Vertex(pos.x, pos.y, pos.z);
+	v->normal = normal;
+	v->index = (int)remesh_data.new_vertices.size();
+	remesh_data.new_vertices.push_back(v);
+	return v;
+}
+
+Edge* Polyhedron::create_new_edge(Vertex* v1, Vertex* v2) {
+	Edge* e = new Edge();
+	e->verts[0] = v1;
+	e->verts[1] = v2;
+	e->index = (int)remesh_data.new_edges.size();
+	e->is_new = true;
+	remesh_data.new_edges.push_back(e);
+	return e;
+}
+
+void Polyhedron::create_new_triangle(Vertex* v1, Vertex* v2, Vertex* v3, Edge* e1, Edge* e2, Edge* e3) {
+	Triangle* tri = new Triangle();
+	tri->nverts = 3;
+	tri->verts[0] = v1;
+	tri->verts[1] = v2;
+	tri->verts[2] = v3;
+	tri->edges[0] = e1;
+	tri->edges[1] = e2;
+	tri->edges[2] = e3;
+	tri->index = (int)remesh_data.new_triangles.size();
+	remesh_data.new_triangles.push_back(tri);
+}
+
 void Polyhedron::remesh_silhouette(const icMatrix3x3& view, const icVector3& translate)
 {
+	icVector3 camera_pos = inverse(view) * (-translate);
+
 	// Clear previously stored remesh data
 	remesh_data.clear();
 	// Copy original vlist and elist to the remesh_data
@@ -1257,15 +1316,17 @@ void Polyhedron::remesh_silhouette(const icMatrix3x3& view, const icVector3& tra
 		vert = vlist[i];
 		remesh_data.new_vertices.push_back(vert);
 	}
-	// DEBUG:
-	printf( "vert_size: %d\n", (int)remesh_data.new_vertices.size());
+	// DEBUG: printf( "vert_size: %d\n", (int)remesh_data.new_vertices.size());
 	for (int i = 0; i < nedges; i++) {
 		edge = elist[i];
 		remesh_data.new_edges.push_back(edge);
 	}
-	// DEBUG:
-	printf( "edge_size: %d\n", (int)remesh_data.new_edges.size());
-	printf( "tri_size: %d\n", (int)ntris);
+	// DEBUG: printf( "edge_size: %d\n", (int)remesh_data.new_edges.size());
+	// DEBUG: printf( "tri_size: %d\n", (int)ntris);
+
+	// Cache for shared silhouette vertices
+	std::map<std::pair<int, int>, Vertex*> silhouette_vertex_cache;
+	std::map<std::pair<int, int>, Vertex*> base_vertex_cache;
 
 	// Iterate through all triangle faces in the original mesh
 	Triangle* tri;
@@ -1281,8 +1342,10 @@ void Polyhedron::remesh_silhouette(const icMatrix3x3& view, const icVector3& tra
 		for (int j = 0; j < 3; j++) {
 			vert = tri->verts[j];
 			icVector3 loc(vert->x, vert->y, vert->z);
-			eye = view * loc + translate;
-			norm = view * vert->normal;
+			eye = camera_pos - loc;
+			normalize(eye);
+			norm = vert->normal;
+			normalize(norm);
 			// From article: the vertex V is visible if and only if the viewpoint E is
 			// above the plane  F(X;V)=0
 			visibility[j] = dot(norm, eye) >= 0.f;
@@ -1290,72 +1353,205 @@ void Polyhedron::remesh_silhouette(const icMatrix3x3& view, const icVector3& tra
 
 		// Remeshing is needed only if it is silhouette triangle
 		if (visibility[0] == visibility[1] && visibility[1] == visibility[2]) {
+			tri->index = (int)remesh_data.new_triangles.size();
 			remesh_data.new_triangles.push_back(tri);
-		} else {
+		}
+		else {
 			/*
 			 * Step #2: Find the vertex of the triangle with a different visibility compared
 			 *			to other two vertices
 			 */
 			int odd_index = find_odd_visibility(visibility);
-			if ( odd_index == -1 ) {
+			if (odd_index == -1) {
 				printf("Error: odd_index = -1, error logic happened for remesh_silhouette!");
 				return;
 			}
+			Vertex* odd_vertex = tri->verts[odd_index];
 
 			/*
 			 * Step #3: Compute the silhouette bridges by Hermite interpolation for the two
 			 *			edges with visibility (+, -) of the silhouette edge
 			 */
-			auto silhouette_bridges = compute_silhouette_bridges(tri, visibility, odd_index);
+			auto silhouette_bridges = compute_silhouette_bridges(tri, visibility, odd_vertex);
+			Edge* e1 = silhouette_bridges.first;
+			Edge* e2 = silhouette_bridges.second;
 
 			/*
 			 * Step #4: Compute the silhouette point on the silhouette bridge
 			 */
-			Edge* e1 = silhouette_bridges.first;
-			Edge* e2 = silhouette_bridges.second;
-			compute_silhouette_point(e1, view, translate);
-			compute_silhouette_point(e2, view, translate);
+			compute_silhouette_point(e1, camera_pos);
+			compute_silhouette_point(e2, camera_pos);
 
 			/*
-			 * Step #5: Compute the silhouette segments based on silhouette points along with their normals
+			 * Step #5: Adaptively compute the silhouette segments based on silhouette points along with their normals
 			 */
 
-			// TODO: adjust to adaptive sampling later
-			const int num_samples = 8;
-			const float step = 1.f / num_samples;
-			Vertex* center_v = tri->verts[odd_index];
-			for (int i = 0; i < num_samples; i++) {
-				float t0 = step * i;
-				float t1 = step * (i + 1);
+			 const int num_samples = 8;
+			 // Compute the number of sample points based on local info
+			// const int num_samples = compute_segment_num(e1, e2);
 
-				// Sample points from Hermite interpolation
+			const float step = 1.f / num_samples;
+			// Vertex* center_v = tri->verts[odd_index];
+			Vertex* vA = (e1->verts[0] == odd_vertex) ? e1->verts[1] : e1->verts[0];
+			icVector3 vA_pos = (vA->x, vA->y, vA->z);
+			icVector3 vA_normal = vA->normal;
+			Vertex* vB = (e2->verts[0] == odd_vertex) ? e2->verts[1] : e2->verts[0];
+			icVector3 vB_pos = (vB->x, vB->y, vB->z);
+			icVector3 vB_normal = vA->normal;
+			// Vertex* vA = tri->verts[(odd_index + 1) % 3];
+			// Vertex* vB = tri->verts[(odd_index + 2) % 3];
+
+			// Determine remeshing strategy: compare depth of silhouette segment vs edge (vA-vB)
+			icVector3 p_cam = inverse(view) * (e1->silhouette_point + e2->silhouette_point) * 0.5f;
+			icVector3 e_cam = inverse(view) * ((icVector3(vA->x, vA->y, vA->z) + icVector3(vB->x, vB->y, vB->z)) * 0.5f);
+
+			bool segment_behind_edge = p_cam.z > e_cam.z;
+
+			for (int k = 0; k < num_samples; k++) {
+				float t0 = step * k;
+				float t1 = step * (k + 1);
+
 				icVector3 p0 = compute_silhouette_segment(e1, e2, t0);
 				icVector3 p1 = compute_silhouette_segment(e1, e2, t1);
 
-				// Create and store new vertices
-				Vertex* v0 = new Vertex(p0.x, p0.y, p0.z);
-				Vertex* v1 = new Vertex(p1.x, p1.y, p1.z);
+				icVector3 n1 = e1->silhouette_point_normal;
+				icVector3 n2 = e2->silhouette_point_normal;
+				icVector3 n0_interp = (1.0 - t0) * n1 + t0 * n2;
+				icVector3 n1_interp = (1.0 - t1) * n1 + t1 * n2;
+				normalize(n0_interp);
+				normalize(n1_interp);
 
-				int idx0 = (int)remesh_data.new_vertices.size();
-				v0->index = idx0;
-				remesh_data.new_vertices.push_back(v0);
-				int idx1 = (int)remesh_data.new_vertices.size();
-				v1->index = idx1;
-				remesh_data.new_vertices.push_back(v1);
+				std::pair<int, int> key0(i, k);
+				std::pair<int, int> key1(i, k + 1);
+				Vertex* v0;
+				Vertex* v1;
 
-				// Form new triangle based on the sampled points for silhouette segments
-				Triangle* new_tri = new Triangle();
-				new_tri->nverts = 3;
-				new_tri->verts[0] = center_v;
-				new_tri->verts[1] = v0;
-				new_tri->verts[2] = v1;
-				new_tri->index = (int)remesh_data.new_triangles.size();
+				if (silhouette_vertex_cache.count(key0)) v0 = silhouette_vertex_cache[key0];
+				else {
+					v0 = new Vertex(p0.x, p0.y, p0.z);
+					v0->normal = n0_interp;
+					v0->index = (int)remesh_data.new_vertices.size();
+					remesh_data.new_vertices.push_back(v0);
+					silhouette_vertex_cache[key0] = v0;
+				}
 
-				remesh_data.new_triangles.push_back(new_tri);
-				remesh_data.new_triangle_indices.push_back(new_tri->index);
+				if (silhouette_vertex_cache.count(key1)) v1 = silhouette_vertex_cache[key1];
+				else {
+					v1 = new Vertex(p1.x, p1.y, p1.z);
+					v1->normal = n1_interp;
+					v1->index = (int)remesh_data.new_vertices.size();
+					remesh_data.new_vertices.push_back(v1);
+					silhouette_vertex_cache[key1] = v1;
+				}
+
+				auto make_edge = [&](Vertex* a, Vertex* b) {
+					Edge* e = new Edge();
+					e->verts[0] = a;
+					e->verts[1] = b;
+					e->index = (int)remesh_data.new_edges.size();
+					e->is_new = true;
+					remesh_data.new_edges.push_back(e);
+					return e;
+					};
+				
+				tri->index = (int)remesh_data.new_triangles.size();
+				remesh_data.new_triangles.push_back(tri);
+
+				if (segment_behind_edge) {
+
+					icVector3 b_p0 = (1.0 - t0) * vA_pos + t0 * vB_pos;
+					icVector3 b_p1 = (1.0 - t1) * vA_pos + t1 * vB_pos;
+
+					icVector3 b_n0_interp = (1.0 - t0) * vA_normal + t0 * vB_normal;
+					icVector3 b_n1_interp = (1.0 - t1) * vA_normal + t1 * vB_normal;
+					normalize(b_n0_interp);
+					normalize(b_n1_interp);
+
+					Vertex* b_v0;
+					if (k == 0) {
+						b_v0 = vA;
+					}
+					else {
+						if (base_vertex_cache.count(key0)) b_v0 = base_vertex_cache[key0];
+						else {
+							b_v0 = new Vertex(p0.x, p0.y, p0.z);
+							b_v0->normal = b_n0_interp;
+							b_v0->index = (int)remesh_data.new_vertices.size();
+							remesh_data.new_vertices.push_back(b_v0);
+							base_vertex_cache[key0] = b_v0;
+						}
+					}
+					Vertex* b_v1;
+					if (k == num_samples - 1) {
+						b_v1 = vB;
+					}
+					else {
+						if (base_vertex_cache.count(key1)) b_v1 = base_vertex_cache[key1];
+						else {
+							b_v1 = new Vertex(p1.x, p1.y, p1.z);
+							b_v1->normal = b_n1_interp;
+							b_v1->index = (int)remesh_data.new_vertices.size();
+							remesh_data.new_vertices.push_back(b_v1);
+							base_vertex_cache[key1] = b_v1;
+						}
+					}
+					
+					// form the triangulation between each silhouette segment and the base segment
+					Edge* sil_base_e0 = make_edge(b_v0, v0);
+					Edge* sil_base_e1 = make_edge(v0, b_v1);
+					Edge* base_e = make_edge(b_v1, b_v0);
+					create_new_triangle(b_v0, v0, b_v1, sil_base_e0, sil_base_e1, base_e);
+
+					Edge* sil_base_e2 = make_edge(b_v1, v1);
+					Edge* sil_e = make_edge(v1, v0);
+					create_new_triangle(b_v1, v1, v0, sil_base_e2, sil_e, sil_base_e1);
+
+					// ensure local convexity on the current triangle
+					if (k == 0) {
+						Edge* tri_e0 = make_edge(odd_vertex, b_v0);
+						Edge* tri_e1 = make_edge(v0, odd_vertex);
+						create_new_triangle(odd_vertex, b_v0, v0, tri_e0, sil_base_e0, tri_e1);
+					}
+					Edge* tri_e0 = make_edge(v0, odd_vertex);
+					Edge* tri_e1 = make_edge(odd_vertex, v1);
+					create_new_triangle(v0, odd_vertex, v1, tri_e0, tri_e1, sil_e);
+					if (k == num_samples - 1) {
+						Edge* tri_e0 = make_edge(v1, odd_vertex);
+						Edge* tri_e1 = make_edge(odd_vertex, b_v1);
+						// Edge* sil_base_e2 = make_edge(b_v1, v1);
+						create_new_triangle(v1, odd_vertex, b_v1, tri_e0, tri_e1, sil_base_e2);
+					}
+
+
+				}
+				else {
+					if (k == 0) {
+						// form the triangle between vA and the silhouette point
+						Edge* init_tri_e0 = make_edge(odd_vertex, vA);
+						Edge* init_tri_e1 = make_edge(vA, v0);
+						Edge* init_tri_e2 = make_edge(v0, odd_vertex);
+
+						create_new_triangle(odd_vertex, vA, v0, init_tri_e0, init_tri_e1, init_tri_e2);
+					}
+					// The sample points on the segment S(t) are connected to the odd vertex
+					Edge* sil_tri_e0 = make_edge(odd_vertex, v0);
+					Edge* sil_tri_e1 = make_edge(v0, v1);
+					Edge* sil_tri_e2 = make_edge(v1, odd_vertex);
+
+					create_new_triangle(odd_vertex, v0, v1, sil_tri_e0, sil_tri_e1, sil_tri_e2);
+
+					if (k == num_samples - 1) {
+						// form the triangle between vB and the silhouette point
+						Edge* end_tri_e0 = make_edge(odd_vertex, vB);
+						Edge* end_tri_e1 = make_edge(vB, v1);
+						Edge* end_tri_e2 = make_edge(v1, odd_vertex);
+
+						create_new_triangle(odd_vertex, vB, v1, end_tri_e0, end_tri_e1, end_tri_e2);
+					} 
+				}
 			}
 		}
+		// DEBUG: printf( "remesh_vert_size: %d\n", (int)remesh_data.new_vertices.size());
+		// DEBUG: printf( "remesh_tri_size: %d\n", (int)remesh_data.new_triangles.size());
 	}
-	printf( "remesh_vert_size: %d\n", (int)remesh_data.new_vertices.size());
-	printf( "remesh_tri_size: %d\n", (int)remesh_data.new_triangles.size());
 }

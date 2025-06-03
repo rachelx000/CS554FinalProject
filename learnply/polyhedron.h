@@ -96,6 +96,7 @@ public:
     icVector3 tangent_v1, tangent_v2;   // tangent vectors for two endpoints
     icVector3 silhouette_point;
     icVector3 silhouette_point_normal;
+    bool is_new = false;
 };
 
 // The triangle class
@@ -291,13 +292,11 @@ struct RemeshData {
     std::vector<Vertex*> new_vertices;
     std::vector<Edge*> new_edges;
     std::vector<Triangle*> new_triangles;
-    std::vector<int> new_triangle_indices; // useful for rendering or tagging
 
     void clear() {
         new_vertices.clear();
         new_edges.clear();
         new_triangles.clear();
-        new_triangle_indices.clear();
     }
 };
 
@@ -406,11 +405,15 @@ public:
 
     /* Final Project */
     int find_odd_visibility(const bool visibility[3]);
-    std::pair<Edge*, Edge*> compute_silhouette_bridges(Triangle* tri, const bool visibility[3], int odd_index);
+    std::pair<Edge*, Edge*> compute_silhouette_bridges(Triangle* tri, const bool visibility[3], Vertex* odd_vertex);
     void compute_tangents_for_an_edge(Edge* edge);
-    void compute_silhouette_point(Edge* edge, const icMatrix3x3& view, const icVector3& translate);
+    void compute_silhouette_point(Edge* edge, const icVector3& camera_pos);
     icVector3 hermite_interpolation(const icVector3& v1, const icVector3& v2, const icVector3& t1, const icVector3& t2, double u);
     icVector3 compute_silhouette_segment(Edge* e1, Edge* e2, float u);
+    int compute_segment_num(Edge* v1, Edge* v2);
+    Vertex* create_new_vertex(icVector3& pos, icVector3& normal);
+    Edge* create_new_edge(Vertex* v1, Vertex* v2);
+    void create_new_triangle(Vertex* v1, Vertex* v2, Vertex* v3, Edge* e1, Edge* e2, Edge* e3);
     void remesh_silhouette(const icMatrix3x3& view, const icVector3& translate);
 };
 
