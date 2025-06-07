@@ -289,14 +289,38 @@ struct LineSegment
 
 /* Final Project */
 struct RemeshData {
+    int origin_nverts = -1;
+    int origin_nedges = -1;
+
     std::vector<Vertex*> new_vertices;
     std::vector<Edge*> new_edges;
     std::vector<Triangle*> new_triangles;
+    std::vector<int> new_triangle_indices;
+
 
     void clear() {
+        // Sort the indices of newly added geometries
+        std::sort(new_triangle_indices.begin(), new_triangle_indices.end());
+
+        // Iterate through to remove newly added geometries
+        for (int i = origin_nverts; i < new_vertices.size(); i++) {
+            delete new_vertices[i];
+        }
+        for (int i = origin_nedges; i < new_edges.size(); i++) {
+            delete new_edges[i];
+        }
+        for (int i = 0; i < new_triangles.size(); i++) {
+            Triangle* curr_tri = new_triangles[i];
+            if (std::binary_search(new_triangle_indices.begin(), new_triangle_indices.end(), curr_tri->index)) {
+                delete curr_tri;
+            }
+        }
+
+        // Clear buffers
         new_vertices.clear();
         new_edges.clear();
         new_triangles.clear();
+        new_triangle_indices.clear();
     }
 };
 
@@ -341,6 +365,7 @@ public:
 
     /* Project 2, Problem 1 */
     std::vector<LineSegment> silhouette;
+    std::vector<LineSegment> remeshing_silhouette;
     
     /* Project 2, Problem 2 */
     double sum_mean_curvature, min_mean_curvature, max_mean_curvature;
@@ -411,8 +436,6 @@ public:
     icVector3 hermite_interpolation(const icVector3& v1, const icVector3& v2, const icVector3& t1, const icVector3& t2, double u);
     icVector3 compute_silhouette_segment(Edge* e1, Edge* e2, float u);
     int compute_segment_num(Edge* v1, Edge* v2);
-    Vertex* create_new_vertex(icVector3& pos, icVector3& normal);
-    Edge* create_new_edge(Vertex* v1, Vertex* v2);
     void create_new_triangle(Vertex* v1, Vertex* v2, Vertex* v3, Edge* e1, Edge* e2, Edge* e3);
     void remesh_silhouette(const icMatrix3x3& view, const icVector3& translate);
 };

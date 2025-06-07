@@ -44,7 +44,7 @@ int last_x, last_y;
 double L = 1.0;
 
 /* Project 2, Problem 1 */
-int silhouette_mode = 0; // 0=no silhouette, 1=edge silhouette, 2=face silhouette
+int silhouette_mode = 0; // 0=no silhouette, 1=display silhouette
 
 /* Project 2, Problem 2 */
 int tensor_display_mode = 0; // 0=no tensor, 1=major, 2=minor, 3=cross
@@ -95,21 +95,18 @@ int main(int argc, char *argv[])
 
   	progname = argv[0];
 
-	this_file = fopen("../tempmodels/coarse_feline.ply", "r");
+	this_file = fopen("../tempmodels/feline.ply", "r");
 	poly = new Polyhedron (this_file);
 	fclose(this_file);
 	mat_ident( rotmat );	
 
 	poly->initialize(); // initialize everything
-
-	
-
 	poly->calc_bounding_sphere();
 	poly->calc_face_normals_and_area();
 	poly->average_normals();
 
 	/* Project 1, problem 2 */
-	//poly->create_corners();
+	// poly->create_corners();
 
 	/* Project 1, problem 3a-d */
 	poly->compute_euler_characteristic();
@@ -462,7 +459,7 @@ void keyboard(unsigned char key, int x, int y) {
 
 	/* Project 2, Problem 1 */
 	case 's':
-		silhouette_mode = (silhouette_mode + 1) % 3;
+		silhouette_mode = (silhouette_mode + 1) % 2;
 		printf("silhouette_mode=%d\n", silhouette_mode);
 		display();
 		break;
@@ -546,18 +543,18 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		{
 
 		/* default vis */
-		case 0:
+		case 1:
 		{
 			if (i == this_poly->seed) {
-				mat_diffuse[0] = 0.0;
-				mat_diffuse[1] = 0.0;
-				mat_diffuse[2] = 1.0;
-				mat_diffuse[3] = 1.0;
-			}
-			else {
 				mat_diffuse[0] = 1.0;
 				mat_diffuse[1] = 1.0;
 				mat_diffuse[2] = 0.0;
+				mat_diffuse[3] = 1.0;
+			}
+			else {
+				mat_diffuse[0] = 0.0;
+				mat_diffuse[1] = 0.0;
+				mat_diffuse[2] = 1.0;
 				mat_diffuse[3] = 1.0;
 			}
 			glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
@@ -573,7 +570,7 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		}
 
 		/* Project 1, Problem 1a */
-		case 1:
+		case 0:
 		{
 			static const GLfloat color_map[][4] = {
 				{ 1.0f, 0.0f, 0.0f, 1.0f },
@@ -740,16 +737,11 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 						 m[2], m[6], m[10]);
 		icVector3 translation(m[12], m[13], m[14]);
 
-		if (silhouette_mode == 1) {
-			poly->compute_silhouette_edges(view, translation);
-			// poly->remesh_silhouette(view, translation);
-		} else if (silhouette_mode == 2){
-			poly->compute_silhouette_faces(view, translation);
-		}
+		poly->compute_silhouette_faces(view, translation);
 
 		// draw the silhouette line segments
 		glDisable(GL_LIGHTING);
-		glLineWidth(8.0);
+		glLineWidth(3.0);
 		glColor3f(0.0, 0.0, 0.0);
 		glBegin(GL_LINES);
 		for (const LineSegment& segment : poly->silhouette) {
@@ -758,40 +750,9 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		}
 		glEnd();
 	}
-
-	if (silhouette_mode != 0)
-	{
-		// get current model-view matrix
-		GLdouble m[16];
-		glGetDoublev(GL_MODELVIEW_MATRIX, m);
-		icMatrix3x3 view(m[0], m[4], m[8],
-			m[1], m[5], m[9],
-			m[2], m[6], m[10]);
-		icVector3 translation(m[12], m[13], m[14]);
-
-		if (silhouette_mode == 1) {
-			poly->compute_silhouette_edges(view, translation);
-			// poly->remesh_silhouette(view, translation);
-		}
-		else if (silhouette_mode == 2) {
-			poly->compute_silhouette_faces(view, translation);
-		}
-
-		// draw the silhouette line segments
-		glDisable(GL_LIGHTING);
-		glLineWidth(8.0);
-		glColor3f(0.0, 0.0, 0.0);
-		glBegin(GL_LINES);
-		for (const LineSegment& segment : poly->silhouette) {
-			glVertex3dv(segment.start.entry);
-			glVertex3dv(segment.end.entry);
-		}
-		glEnd();
-	}
-
 
 	// draw the curvature tensor crosses if enabled
-	if (tensor_display_mode > 0)
+	/* if (tensor_display_mode > 0)
 	{
 		glDisable(GL_LIGHTING);
 		glLineWidth(2.0);
@@ -823,7 +784,7 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 			}
 		}
 		glEnd();
-	}
+	} */
 
 	// draw wireframe if enabled
 	if (wireframe_mode)
@@ -945,6 +906,27 @@ void display_silhouette_rendering(Polyhedron* this_poly)
 		glEnd();
 	}
 
+	if (silhouette_mode != 0)
+	{
+		// get current model-view matrix
+		GLdouble m[16];
+		glGetDoublev(GL_MODELVIEW_MATRIX, m);
+		icMatrix3x3 view(m[0], m[4], m[8],
+			m[1], m[5], m[9],
+			m[2], m[6], m[10]);
+		icVector3 translation(m[12], m[13], m[14]);
+
+		// draw the silhouette line segments
+		glDisable(GL_LIGHTING);
+		glLineWidth(3.0);
+		glColor3f(0.0, 0.0, 0.0);
+		glBegin(GL_LINES);
+		for (const LineSegment& segment : poly->remeshing_silhouette) {
+			glVertex3dv(segment.start.entry);
+			glVertex3dv(segment.end.entry);
+		}
+		glEnd();
+	}
 
 }
 
