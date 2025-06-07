@@ -24,6 +24,7 @@ Eugene Zhang, 2005
 #include "polyhedron.h"
 #include "trackball.h"
 #include "tmatrix.h"
+#include <ctime>
 
 const int win_width=1024;
 const int win_height=1024;
@@ -75,6 +76,12 @@ jitter_struct ji16[16] = {{0.125, 0.125}, {0.375, 0.125}, {0.625, 0.125}, {0.875
 
 Polyhedron *poly;
 
+/* Final Project: calculate rendering efficiency */
+double total_fps = 0.f;
+int total_frame = 0;
+clock_t start = 0;
+clock_t end = 0;
+
 // callback function forward declaration
 void init(void);
 void keyboard(unsigned char key, int x, int y);
@@ -95,7 +102,7 @@ int main(int argc, char *argv[])
 
   	progname = argv[0];
 
-	this_file = fopen("../tempmodels/feline.ply", "r");
+	this_file = fopen("../tempmodels/coarse_feline.ply", "r");
 	poly = new Polyhedron (this_file);
 	fclose(this_file);
 	mat_ident( rotmat );	
@@ -106,7 +113,7 @@ int main(int argc, char *argv[])
 	poly->average_normals();
 
 	/* Project 1, problem 2 */
-	// poly->create_corners();
+	poly->create_corners();
 
 	/* Project 1, problem 3a-d */
 	poly->compute_euler_characteristic();
@@ -247,6 +254,7 @@ void motion(int x, int y) {
 		t_old = t;
 
 		display();
+
 		break;
 	}
 }
@@ -491,11 +499,17 @@ void keyboard(unsigned char key, int x, int y) {
 		printf("silhouette_smoothing_mode=%d\n", silhouette_smoothing_mode);
 		display();
 		break;
-
 	default:
 		fprintf(stderr, "Unknown key pressed\n");
 		break;
 	}
+
+	if (total_fps > 0 && total_frame > 0) {
+		double avg_fps = total_fps / total_frame;
+		printf("current_rendering fps = % lf \n", avg_fps);
+	}
+	total_fps = 0.f;
+	total_frame = 0;
 }
 
 static void color_from_scalar(GLdouble *color, GLdouble min, GLdouble max, GLdouble value)
@@ -932,6 +946,7 @@ void display_silhouette_rendering(Polyhedron* this_poly)
 
 void display(void)
 {
+	start = clock();
 	GLint viewport[4];
 	int jitter;
 
@@ -968,6 +983,10 @@ void display(void)
 		glPopMatrix ();
 		glAccum(GL_ACCUM, 1.0/ACSIZE);
 	}
+	end = clock();
+	double curr_fps = 1 / ((end - start) / (double)CLOCKS_PER_SEC);
+	total_fps += curr_fps;
+	total_frame++;
 	glAccum(GL_RETURN, 1.0);
 	glFlush();
 	glutSwapBuffers();
