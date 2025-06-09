@@ -1165,7 +1165,7 @@ void Polyhedron::compute_silhouette_point(Edge* edge, const icVector3& camera_po
 
 	double disc = sqrt( b*b - 4.f*a*c );
 	if (disc < 0) {
-		printf("Error: discriminant < 0\n");
+		// printf("Error: discriminant < 0\n");
 		return;
 	}
 
@@ -1177,7 +1177,7 @@ void Polyhedron::compute_silhouette_point(Edge* edge, const icVector3& camera_po
 	}
 	// raise error if no valid u
 	if ( u < 0.0 || u > 1.0 ) {
-		printf("invalid interpolant u for silhouette points");
+		// printf("invalid interpolant u for silhouette points\n");
 		return;
 	}
 
@@ -1357,7 +1357,7 @@ void Polyhedron::remesh_silhouette(const icMatrix3x3& view, const icVector3& tra
 		 */
 		int odd_index = find_odd_visibility(visibility);
 		if (odd_index == -1) {
-			printf("Error: odd_index = -1, error logic happened for remesh_silhouette!");
+			// printf("Error: odd_index = -1, error logic happened for remesh_silhouette!\n");
 			return;
 		}
 		Vertex* odd_vertex = tri->verts[odd_index];
