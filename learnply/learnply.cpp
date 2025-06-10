@@ -584,7 +584,24 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		}
 
 		/* Project 1, Problem 1a */
-		case 0:
+		case 2:
+		{
+			glDisable(GL_LIGHTING);
+			glLineWidth(1.0);
+			glColor3f(0.0, 0.0, 0.0);
+			glBegin(GL_LINES);
+			for (int i = 0; i < poly->nedges; i++)
+			{
+				Edge* e = poly->elist[i];
+				glVertex3d(e->verts[0]->x, e->verts[0]->y, e->verts[0]->z);
+				glVertex3d(e->verts[1]->x, e->verts[1]->y, e->verts[1]->z);
+			}
+			glEnd();
+			break;
+		}
+
+		/* Project 1, Problem 1a */
+		case 3:
 		{
 			static const GLfloat color_map[][4] = {
 				{ 1.0f, 0.0f, 0.0f, 1.0f },
@@ -609,7 +626,7 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		}
 
 		/* Project 1, Problem 1b */
-		case 2:
+		case 4:
 		{
 			static const GLfloat color_map[][4] = {
 				{ 1.0f, 0.0f, 0.0f, 1.0f },
@@ -629,7 +646,7 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		}
 
 		/* Project 1, Problem 1c */
-		case 3:
+		case 5:
 		{
 			GLfloat color[4] = {
 				(GLfloat)abs(temp_t->normal.x),
@@ -649,12 +666,11 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 				glVertex3d(temp_t->verts[j]->x, temp_t->verts[j]->y, temp_t->verts[j]->z);
 			}
 			glEnd();
-
 			break;
 		}
 
-		/* Project 1, Problem 1d (554 only) */
-		case 4:
+		/* Project 1, Problem 1d */
+		case 6:
 		{
 			glBegin(GL_TRIANGLES);
 			for (j = 0; j < 3; ++j)
@@ -676,7 +692,7 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		}
 
 		/* Project 1, Problem 3 (Gaussian curvature) */
-		case 5:
+		case 7:
 		{
 			glDisable(GL_LIGHTING);
 
@@ -695,7 +711,7 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 		}
 
 		/* Project 1, Problem 3 (valence deficit) */
-		case 6:
+		case 8:
 		{
 			glDisable(GL_LIGHTING);
 
@@ -713,24 +729,14 @@ void display_shape(GLenum mode, Polyhedron *this_poly)
 			break;
 		}
 
-		/* Project 2, Problem 2 (mean curvature) */
-		case 7:
-		{
-
-
-			break;
-		}
-
-		/* Project 2, Problem 2 (gaussian curvature) */
-		case 8:
+		case 9:
 		{
 			
 
 			break;
 		}
 
-		/* Project 2, Problem 2-3 (curvature tensor) */
-		case 9:
+		case 0:
 		{
 			
 
