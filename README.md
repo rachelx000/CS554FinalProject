@@ -4,6 +4,15 @@
 
 ### Rachel Xing
 
+<table>
+   <td width="50%">
+      <img src="figure/bunny_smooth_sil.gif" alt="bunny_smooth_sil" style="width: 100%; float: left; margin-right: 10px;" />
+   </td>
+   <td width="50%">
+      <img src="figure/feline_smooth_sil.gif" alt="feline_smooth_sil" style="width: 100%; float: left; margin-right: 10px;" />
+   </td>
+</table>
+
 &nbsp;
 ### How to compile the program
 This is based on the graphics program called **learnply** for scientific visualization provided by Prof. Eugene Zhang @ Oregon State University.
